@@ -1,0 +1,45 @@
+{
+  "_comment": "Midnight MCP Server configuration for Loser's Gambit. This file documents the MCP server settings. Copy the 'mcpServers' block into your .claude/settings.json to enable Midnight blockchain integration.",
+  "mcpServers": {
+    "midnight": {
+      "command": "npx",
+      "args": ["-y", "@midnight-ntwrk/midnight-js-mcp-server@latest"],
+      "env": {
+        "MIDNIGHT_NETWORK": "undeployed",
+        "MIDNIGHT_NODE_URL": "http://localhost:9944",
+        "MIDNIGHT_INDEXER_URL": "http://localhost:8088/api/v1/graphql",
+        "MIDNIGHT_INDEXER_WS_URL": "ws://localhost:8088/api/v1/graphql",
+        "MIDNIGHT_PROOF_SERVER_URL": "http://localhost:6300"
+      }
+    }
+  },
+  "_networks": {
+    "undeployed": {
+      "description": "Local devnet (Docker-based Midnight node)",
+      "MIDNIGHT_NODE_URL": "http://localhost:9944",
+      "MIDNIGHT_INDEXER_URL": "http://localhost:8088/api/v1/graphql",
+      "MIDNIGHT_INDEXER_WS_URL": "ws://localhost:8088/api/v1/graphql",
+      "MIDNIGHT_PROOF_SERVER_URL": "http://localhost:6300"
+    },
+    "testnet-02": {
+      "description": "Midnight public testnet",
+      "MIDNIGHT_NODE_URL": "https://rpc.testnet-02.midnight.network",
+      "MIDNIGHT_INDEXER_URL": "https://indexer.testnet-02.midnight.network/api/v1/graphql",
+      "MIDNIGHT_INDEXER_WS_URL": "wss://indexer.testnet-02.midnight.network/api/v1/graphql",
+      "MIDNIGHT_PROOF_SERVER_URL": "https://proof-server.testnet-02.midnight.network"
+    }
+  },
+  "_contract_notes": {
+    "description": "When the real Compact contract is deployed, replace midnight-dummy.ts with actual SDK calls.",
+    "sdk_package": "@midnight-ntwrk/midnight-js-contracts",
+    "zkp_package": "@midnight-ntwrk/compact-runtime",
+    "wallet_package": "@midnight-ntwrk/midnight-js-wallet",
+    "contract_file": "src/contracts/janken.compact",
+    "key_functions": [
+      "submitCommitment(cardHash, modeProof)",
+      "revealCard(cardType, secret)",
+      "claimVictoryReward(gameId)",
+      "generateZKProof(privateInput)"
+    ]
+  }
+}
