@@ -1,21 +1,12 @@
 services:
   - type: web
-    name: loser-gambit-relay
+    name: zkplosers-cl
     runtime: node
-    rootDir: server
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install && npm run build && cd server && npm install && npm run build
+    startCommand: node server/dist/index.js
     envVars:
       - key: PORT
         value: 10000
-    plan: free
-
-  - type: web
-    name: loser-gambit-frontend
-    runtime: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
       - key: VITE_WS_URL
         value: wss://zkplosers-cl.onrender.com
     plan: free
