@@ -9,3 +9,13 @@ services:
       - key: PORT
         value: 10000
     plan: free
+
+  - type: web
+    name: loser-gambit-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_WS_URL
+        value: wss://loser-gambit-relay.onrender.com
+    plan: free
