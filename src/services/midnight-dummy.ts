@@ -1,66 +1,40 @@
 /**
  * Dummy Midnight blockchain service.
  * All functions simulate on-chain behavior without actual network calls.
- * Replace with real @midnight-ntwrk/midnight-js SDK calls for production.
+ * Replace with real @midnight-ntwrk SDK calls in future phases.
  */
 
-const DUMMY_WORDLIST = [
-  'abandon','ability','able','about','above','absent','absorb','abstract',
-  'absurd','abuse','access','accident','account','accuse','achieve','acid',
-  'acoustic','acquire','across','action','actor','actress','actual','adapt',
-  'add','addict','address','adjust','admit','adult','advance','advice',
-  'aerobic','afford','afraid','again','agent','agree','ahead','aim',
-  'air','airport','aisle','alarm','album','alcohol','alert','alien',
-  'all','alley','allow','almost','alone','alpha','already','also',
-];
-
-function randomHex(length: number): string {
+export function randomHex(length: number): string {
   const chars = '0123456789abcdef';
   return Array.from({ length }, () => chars[Math.floor(Math.random() * 16)]).join('');
 }
 
+/** Deterministic fake TX hash from a seed string */
+export function fakeTxHash(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
+  const base = Math.abs(h).toString(16).padStart(8, '0');
+  return `0x${base}${randomHex(56)}`;
+}
+
+// ── Wallet ─────────────────────────────────────────────────────────────────
+
 export interface WalletAccount {
   address: string;
-  balance: number;
-  mnemonic: string;
+  /** Shielded YTTM balance — only the wallet holder can see this */
+  shieldedBalance: number;
 }
 
-export function generateMnemonic(): string {
-  const words: string[] = [];
-  for (let i = 0; i < 24; i++) {
-    words.push(DUMMY_WORDLIST[Math.floor(Math.random() * DUMMY_WORDLIST.length)]);
-  }
-  return words.join(' ');
-}
-
-export async function createAccount(mnemonic: string): Promise<WalletAccount> {
-  await delay(800);
-  return {
-    address: `mn1${randomHex(38)}`,
-    balance: 100,
-    mnemonic,
-  };
-}
-
-export async function connectLaceWallet(): Promise<WalletAccount> {
+/** Dummy wallet connection — simulates Lace / Midnight wallet without real network */
+export async function connectWalletDummy(): Promise<WalletAccount> {
   await delay(1200);
   return {
-    address: `mn1${randomHex(38)}`,
-    balance: 250,
-    mnemonic: '',
+    address: `mn_addr_preprod1${randomHex(39)}`,
+    shieldedBalance: 25,
   };
 }
 
-export async function importMnemonic(mnemonic: string): Promise<WalletAccount> {
-  await delay(900);
-  const seed = mnemonic.split(' ').reduce((acc, w) => acc + w.charCodeAt(0), 0);
-  const fakeHex = randomHex(38);
-  return {
-    address: `mn1${fakeHex}`,
-    balance: 50 + (seed % 200),
-    mnemonic,
-  };
-}
+// ── ZKP ────────────────────────────────────────────────────────────────────
 
 export interface ZKProof {
   proofId: string;
@@ -69,7 +43,6 @@ export interface ZKProof {
 }
 
 export async function generateZKProof(_cardType: string, _roundId: string): Promise<ZKProof> {
-  // Simulate ZKP generation latency (2-3 seconds)
   await delay(2000 + Math.random() * 1000);
   return {
     proofId: `zkp_${randomHex(16)}`,
@@ -78,22 +51,57 @@ export async function generateZKProof(_cardType: string, _roundId: string): Prom
   };
 }
 
-export async function submitMove(_params: {
-  roundId: string;
-  commitment: string;
-  mode: 'public' | 'hidden';
-}): Promise<string> {
-  await delay(500);
-  return `tx_${randomHex(32)}`;
+// ── On-chain game (dummy) ───────────────────────────────────────────────────
+
+export interface OnChainGameSession {
+  contractAddress: string;
+  deployTxHash: string;
 }
+
+/** Simulate deploying a janken contract — returns a fake contract address */
+export async function deployGameContract(): Promise<OnChainGameSession> {
+  await delay(1500);
+  return {
+    contractAddress: `mn_contract_preprod1${randomHex(35)}`,
+    deployTxHash: fakeTxHash('deploy'),
+  };
+}
+
+/** Simulate submitting a round TX on-chain */
+export async function submitRoundOnChain(params: {
+  contractAddress: string;
+  roundNumber: number;
+  action: 'commit' | 'reveal' | 'resolve';
+}): Promise<string> {
+  await delay(800);
+  return fakeTxHash(`${params.contractAddress}-r${params.roundNumber}-${params.action}`);
+}
+
+// ── Shielded YTTM reward ────────────────────────────────────────────────────
+
+export interface ShieldedRewardResult {
+  txHash: string;
+  /** Amount credited — visible only to the recipient (shielded) */
+  amount: number;
+}
+
+/**
+ * Claim victory reward as shielded YTTM.
+ * The transfer is ZKP-shielded: third parties cannot see the amount or recipient.
+ */
+export async function claimShieldedReward(_address: string): Promise<ShieldedRewardResult> {
+  await delay(1500);
+  return {
+    txHash: fakeTxHash(`reward-${_address}`),
+    amount: 10,
+  };
+}
+
+// ── Legacy aliases (kept for backward compat) ──────────────────────────────
 
 export async function claimReward(_address: string): Promise<string> {
-  await delay(1500);
-  return `tx_${randomHex(32)}`;
-}
-
-export function getMidnightContractAddress(): string {
-  return `mn1contract${randomHex(28)}`;
+  const result = await claimShieldedReward(_address);
+  return result.txHash;
 }
 
 function delay(ms: number): Promise<void> {

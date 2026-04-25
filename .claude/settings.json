@@ -2,12 +2,12 @@
   "mcpServers": {
     "midnight": {
       "command": "npx",
-      "args": ["-y", "@midnight-ntwrk/midnight-js-mcp-server@latest"],
+      "args": ["-y", "midnight-mcp@latest"],
       "env": {
-        "MIDNIGHT_NETWORK": "undeployed",
-        "MIDNIGHT_NODE_URL": "http://localhost:9944",
-        "MIDNIGHT_INDEXER_URL": "http://localhost:8088/api/v1/graphql",
-        "MIDNIGHT_INDEXER_WS_URL": "ws://localhost:8088/api/v1/graphql",
+        "MIDNIGHT_NETWORK": "preprod",
+        "MIDNIGHT_NODE_URL": "wss://rpc.preprod.midnight.network",
+        "MIDNIGHT_INDEXER_URL": "https://indexer.preprod.midnight.network/api/v1/graphql",
+        "MIDNIGHT_INDEXER_WS_URL": "wss://indexer.preprod.midnight.network/api/v1/graphql",
         "MIDNIGHT_PROOF_SERVER_URL": "http://localhost:6300"
       }
     }

@@ -1,6 +1,11 @@
 node_modules/
+server/node_modules/
+server/dist/
 dist/
 .env
 .env.local
 *.local
 .claude/settings.local.json
+# Operator wallet secrets — NEVER commit
+.env.operator.local
+operator-wallet.json

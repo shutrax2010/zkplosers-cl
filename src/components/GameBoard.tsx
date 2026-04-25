@@ -30,34 +30,40 @@ export function GameBoard({
   onNextRound,
 }: GameBoardProps) {
   const {
-    phase, playerName, playerHand, cpuHand,
+    phase, gameMode, playerName, opponentName, playerHand, cpuHand,
     playerTotalVP, cpuTotalVP,
     currentRound, totalRounds,
     selectedCard, selectedMode,
     cpuSelectedCard, cpuSelectedMode,
     currentRoundResult,
+    roundResults,
   } = state;
 
+  const isSolo = gameMode === 'solo';
+  const opponentLabel = isSolo ? 'CPU' : (opponentName || 'OPPONENT');
+
   useEffect(() => {
-    if (phase !== 'cpu-thinking') return;
+    if (!isSolo || phase !== 'cpu-thinking') return;
     const t = setTimeout(onCpuThinkDone, 1200 + Math.random() * 600);
     return () => clearTimeout(t);
-  }, [phase, onCpuThinkDone]);
+  }, [isSolo, phase, onCpuThinkDone]);
 
   useEffect(() => {
-    if (phase !== 'cpu-battle-fold') return;
+    if (!isSolo || phase !== 'cpu-battle-fold') return;
     const t = setTimeout(onCpuDecisionDone, 1000 + Math.random() * 500);
     return () => clearTimeout(t);
-  }, [phase, onCpuDecisionDone]);
+  }, [isSolo, phase, onCpuDecisionDone]);
 
   useEffect(() => {
-    if (phase !== 'revealing') return;
+    if (!isSolo || phase !== 'revealing') return;
     const t = setTimeout(onResolveRound, 1200);
     return () => clearTimeout(t);
-  }, [phase, onResolveRound]);
+  }, [isSolo, phase, onResolveRound]);
 
   const canInteract = phase === 'card-select';
-  const cpuRemainingCards = cpuHand.filter(c => !c.used).length;
+  const cpuRemainingCards = isSolo
+    ? cpuHand.filter(c => !c.used).length
+    : totalRounds - roundResults.length;
   const playerRemainingCards = playerHand.filter(c => !c.used).length;
 
   const vpDelta = (vp: number) => (
@@ -91,7 +97,7 @@ export function GameBoard({
         <div className="flex items-center justify-between mb-2">
           <div>
             <div className="text-xs font-mono" style={{ color: '#94a3b8', letterSpacing: '2px', fontSize: '0.6rem' }}>OPPONENT</div>
-            <div className="font-orbitron font-bold text-sm" style={{ color: '#e2e8f0' }}>CPU_ALPHA</div>
+            <div className="font-orbitron font-bold text-sm" style={{ color: '#e2e8f0' }}>{opponentName || 'CPU_ALPHA'}</div>
           </div>
           <div className="text-right">
             <div className="text-xs font-mono" style={{ color: '#94a3b8', letterSpacing: '2px', fontSize: '0.6rem' }}>SCORE</div>
@@ -112,7 +118,7 @@ export function GameBoard({
           ))}
         </div>
 
-        {/* CPU status — fixed height row to prevent layout shift */}
+        {/* Opponent status — fixed height row to prevent layout shift */}
         <div className="flex justify-center mt-1" style={{ height: 18 }}>
           {phase === 'cpu-thinking' && (
             <span className="text-xs font-mono animate-fade-in" style={{ color: '#94a3b8' }}>
@@ -124,9 +130,24 @@ export function GameBoard({
               Deciding<span className="animate-blink">...</span>
             </span>
           )}
-          {phase === 'player-battle-fold' && cpuSelectedMode === 'hidden' && (
+          {phase === 'player-battle-fold' && (
             <span className="text-xs font-mono animate-fade-in" style={{ color: '#a78bfa' }}>
               Chose HIDDEN
+            </span>
+          )}
+          {phase === 'waiting-opponent-commit' && (
+            <span className="text-xs font-mono animate-fade-in" style={{ color: '#94a3b8' }}>
+              Waiting<span className="animate-blink">...</span>
+            </span>
+          )}
+          {phase === 'waiting-opponent-decision' && (
+            <span className="text-xs font-mono animate-fade-in" style={{ color: '#94a3b8' }}>
+              Deciding<span className="animate-blink">...</span>
+            </span>
+          )}
+          {phase === 'revealing' && !isSolo && (
+            <span className="text-xs font-mono animate-fade-in" style={{ color: '#06b6d4' }}>
+              Revealing<span className="animate-blink">...</span>
             </span>
           )}
           {phase === 'card-select' && (
@@ -156,14 +177,14 @@ export function GameBoard({
 
         {/* Round result */}
         {phase === 'round-result' && currentRoundResult && (
-          <RoundResultDisplay result={currentRoundResult} vpDelta={vpDelta} />
+          <RoundResultDisplay result={currentRoundResult} vpDelta={vpDelta} opponentLabel={opponentLabel} />
         )}
 
         {/* Battle/Fold decision */}
         {phase === 'player-battle-fold' && (
           <div className="panel panel-purple p-4 text-center animate-fade-in-up w-full max-w-xs">
             <div className="text-xs font-mono mb-1" style={{ color: '#a78bfa', letterSpacing: '3px' }}>
-              CPU CHOSE HIDDEN
+              {opponentLabel} CHOSE HIDDEN
             </div>
             <p className="text-xs mb-3" style={{ color: '#94a3b8' }}>
               Battle for VP or Fold to avoid risk?
@@ -352,6 +373,36 @@ export function GameBoard({
             {currentRound + 1 >= totalRounds ? 'SEE FINAL RESULT →' : `ROUND ${currentRound + 2} →`}
           </button>
         )}
+
+        {/* Multi: waiting for opponent to be ready */}
+        {phase === 'waiting-next-round' && (
+          <div className="text-center py-3 animate-fade-in">
+            <span className="text-xs font-mono" style={{ color: '#94a3b8', letterSpacing: '2px' }}>
+              Waiting for opponent<span className="animate-blink">...</span>
+            </span>
+          </div>
+        )}
+
+        {/* Multi: waiting for opponent to commit */}
+        {phase === 'waiting-opponent-commit' && (
+          <div className="text-center py-3 animate-fade-in">
+            <span className="text-xs font-mono" style={{ color: '#a78bfa', letterSpacing: '2px' }}>
+              Move committed · Waiting<span className="animate-blink">...</span>
+            </span>
+          </div>
+        )}
+
+        {/* Multi: waiting for opponent's battle/fold decision */}
+        {phase === 'waiting-opponent-decision' && (
+          <div className="panel panel-purple p-4 text-center animate-fade-in-up">
+            <div className="text-xs font-mono" style={{ color: '#a78bfa', letterSpacing: '2px' }}>
+              YOU CHOSE HIDDEN
+            </div>
+            <p className="text-xs mt-1" style={{ color: '#94a3b8' }}>
+              Opponent deciding<span className="animate-blink">...</span>
+            </p>
+          </div>
+        )}
       </section>
 
       {phase === 'zkp-generating' && <ZKPOverlay onDone={onZkpDone} />}
@@ -411,16 +462,18 @@ function PlayerCardSlot({ phase, selectedCard, selectedMode }: {
 function RoundResultDisplay({
   result,
   vpDelta,
+  opponentLabel,
 }: {
   result: NonNullable<GameState['currentRoundResult']>;
   vpDelta: (vp: number) => React.ReactNode;
+  opponentLabel: string;
 }) {
   const { winner, playerVP, cpuVP, folded, playerCard, cpuCard } = result;
 
   const label = folded ? 'FOLD — No contest'
     : winner === 'draw' ? 'DRAW'
     : winner === 'player' ? 'YOU WIN'
-    : 'CPU WINS';
+    : 'YOU LOSE';
 
   const labelColor = folded ? '#94a3b8'
     : winner === 'draw' ? '#06b6d4'
@@ -436,7 +489,7 @@ function RoundResultDisplay({
 
       {!folded && (
         <div className="flex justify-center gap-3 text-xs mb-2 font-mono items-center">
-          <span style={{ color: '#94a3b8' }}>CPU:</span>
+          <span style={{ color: '#94a3b8' }}>{opponentLabel}:</span>
           {result.cpuMode === 'hidden'
             ? <span style={{ color: '#a78bfa' }}>🔐 ???</span>
             : <span style={{ color: '#e2e8f0' }}>{cpuMeta.icon} {cpuMeta.label}</span>}
@@ -450,7 +503,7 @@ function RoundResultDisplay({
 
       <div className="flex justify-center gap-6 text-xs font-mono">
         <span><span style={{ color: '#94a3b8' }}>You: </span>{playerVP === 0 ? <span style={{ color: '#94a3b8' }}>+0</span> : vpDelta(playerVP)}</span>
-        <span><span style={{ color: '#94a3b8' }}>CPU: </span>{cpuVP === 0 ? <span style={{ color: '#94a3b8' }}>+0</span> : vpDelta(cpuVP)}</span>
+        <span><span style={{ color: '#94a3b8' }}>{opponentLabel}: </span>{cpuVP === 0 ? <span style={{ color: '#94a3b8' }}>+0</span> : vpDelta(cpuVP)}</span>
       </div>
     </div>
   );

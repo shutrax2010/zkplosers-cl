@@ -4,14 +4,16 @@ interface ModeSelectScreenProps {
   walletAddress: string;
   walletBalance: number;
   initialName?: string;
-  onStartSolo: (name: string) => void;
+  onStartSolo: (name: string, onChainMode: boolean) => void;
+  onStartMulti: (name: string, onChainMode: boolean) => void;
 }
 
-export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '', onStartSolo }: ModeSelectScreenProps) {
-  const [name, setName] = useState(initialName);
+export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '', onStartSolo, onStartMulti }: ModeSelectScreenProps) {
+  const [name, setName]               = useState(initialName);
+  const [onChainMode, setOnChainMode] = useState(false);
 
   const shortAddr = walletAddress
-    ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}`
+    ? `${walletAddress.slice(0, 12)}...${walletAddress.slice(-6)}`
     : '—';
 
   return (
@@ -35,7 +37,16 @@ export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '
           </div>
           <div className="text-right">
             <div className="text-xs mb-1" style={{ color: '#94a3b8', letterSpacing: '2px' }}>BALANCE</div>
-            <div className="font-orbitron font-bold" style={{ color: '#a78bfa' }}>{walletBalance} YTTM</div>
+            <div className="flex items-center gap-1 justify-end">
+              <span className="font-orbitron font-bold" style={{ color: '#a78bfa' }}>{walletBalance} YTTM</span>
+              <span
+                className="text-xs px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'rgba(124,58,237,0.15)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.3)' }}
+                title="Shielded — balance is private (ZKP)"
+              >
+                🔐
+              </span>
+            </div>
           </div>
         </div>
 
@@ -50,8 +61,50 @@ export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '
             value={name}
             onChange={e => setName(e.target.value)}
             maxLength={20}
-            onKeyDown={e => e.key === 'Enter' && name.trim() && onStartSolo(name.trim())}
+            onKeyDown={e => e.key === 'Enter' && name.trim() && onStartSolo(name.trim(), onChainMode)}
           />
+        </div>
+
+        {/* On-chain mode toggle */}
+        <div
+          className="panel p-4 flex items-center justify-between cursor-pointer"
+          onClick={() => setOnChainMode(v => !v)}
+          style={{ borderColor: onChainMode ? 'rgba(124,58,237,0.6)' : undefined, background: onChainMode ? 'rgba(124,58,237,0.07)' : undefined }}
+        >
+          <div>
+            <div className="text-sm font-mono font-bold" style={{ color: onChainMode ? '#a78bfa' : '#94a3b8', letterSpacing: '2px' }}>
+              ⛓ ON-CHAIN MODE
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: '#64748b' }}>
+              勝敗をスマートコントラクトで実行 · TX / コントラクトアドレスを表示
+            </div>
+            {onChainMode && (
+              <div
+                className="text-xs mt-1 px-2 py-0.5 rounded inline-block font-mono"
+                style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+              >
+                DEMO — simulated on-chain
+              </div>
+            )}
+          </div>
+          <div
+            className="rounded-full transition-all"
+            style={{
+              width: 40, height: 22, padding: 2,
+              background: onChainMode ? '#7c3aed' : '#1e293b',
+              border: `1px solid ${onChainMode ? '#7c3aed' : '#334155'}`,
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <div
+              className="rounded-full transition-all"
+              style={{
+                width: 16, height: 16,
+                background: onChainMode ? '#fff' : '#475569',
+                transform: onChainMode ? 'translateX(18px)' : 'translateX(0)',
+              }}
+            />
+          </div>
         </div>
 
         {/* Mode buttons */}
@@ -59,31 +112,26 @@ export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '
           <button
             className="btn btn-primary btn-lg w-full flex-col py-8"
             disabled={!name.trim()}
-            onClick={() => onStartSolo(name.trim())}
+            onClick={() => onStartSolo(name.trim(), onChainMode)}
             style={{ height: 'auto', letterSpacing: '3px' }}
           >
             <div className="text-2xl mb-2">⚡</div>
             <div className="text-sm">SOLO OPERATIVE</div>
             <div className="text-xs mt-1 opacity-60" style={{ fontFamily: 'JetBrains Mono', letterSpacing: '1px', textTransform: 'none', fontWeight: 400 }}>
-              vs CPU · Practice mode
+              vs CPU · {onChainMode ? 'On-Chain' : 'Off-Chain'}
             </div>
           </button>
 
           <button
-            className="btn btn-ghost btn-lg w-full flex-col py-8 relative"
-            disabled
-            style={{ height: 'auto', letterSpacing: '3px', cursor: 'not-allowed' }}
+            className="btn btn-ghost btn-lg w-full flex-col py-8"
+            disabled={!name.trim()}
+            onClick={() => onStartMulti(name.trim(), onChainMode)}
+            style={{ height: 'auto', letterSpacing: '3px' }}
           >
-            <div
-              className="absolute top-2 right-2 text-xs px-2 py-1 rounded font-mono"
-              style={{ background: 'rgba(225,29,72,0.2)', color: '#e11d48', letterSpacing: '1px' }}
-            >
-              SOON
-            </div>
-            <div className="text-2xl mb-2 opacity-40">🌐</div>
-            <div className="text-sm opacity-40">MULTI-SYNC</div>
-            <div className="text-xs mt-1 opacity-30" style={{ fontFamily: 'JetBrains Mono', letterSpacing: '1px', textTransform: 'none', fontWeight: 400 }}>
-              Online PvP · WebSocket
+            <div className="text-2xl mb-2">🌐</div>
+            <div className="text-sm">MULTI-SYNC</div>
+            <div className="text-xs mt-1 opacity-60" style={{ fontFamily: 'JetBrains Mono', letterSpacing: '1px', textTransform: 'none', fontWeight: 400 }}>
+              Online PvP · {onChainMode ? 'On-Chain' : 'WebSocket'}
             </div>
           </button>
         </div>
@@ -93,7 +141,7 @@ export function ModeSelectScreen({ walletAddress, walletBalance, initialName = '
           <div style={{ color: '#94a3b8', letterSpacing: '2px', marginBottom: '8px' }}>QUICK RULES</div>
           <div>• 3 rounds · 3 cards (グー / チョキ / パー / 負け犬×1)</div>
           <div>• <span style={{ color: '#a78bfa' }}>Public</span>: standard +1 VP ·  <span style={{ color: '#7c3aed' }}>Hidden</span>: risk/reward +3 or −1 VP</div>
-          <div>• Most VP after 3 rounds wins 10 YTTM</div>
+          <div>• Most VP after 3 rounds wins <span style={{ color: '#a78bfa' }}>10 YTTM 🔐</span> (shielded)</div>
         </div>
       </div>
     </div>
