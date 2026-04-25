@@ -17,5 +17,5 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_WS_URL
-        value: wss://loser-gambit-relay.onrender.com
+        value: wss://zkplosers-cl.onrender.com
     plan: free
