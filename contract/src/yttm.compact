@@ -1,0 +1,139 @@
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// yttm.compact — YTTM (YTTLinks Token Midnight) シールドトークン
+//
+// 役割:
+//   - ゲーム勝者への報酬トークン (10 YTTM) を発行する
+//   - 残高は Shielded（ZKP）— 保有者のみ閲覧可能、第三者に非公開
+//   - mintReward() は Operator (デプロイヤー) のみ呼び出し可能
+//   - TypeScript DApp レイヤーが janken.compact.claimReward() 後に続けて呼ぶ
+//
+// ウォレットアドレスの扱い:
+//   - Compact の正式なウォレット型名 (ZswapCoinPublicKey 等) は Step 1 で確認予定
+//   - 本ファイルでは秘密鍵から derivePk() で導出した Bytes<32> をアドレスとして使用
+//   - derivePk(sk) = persistentHash(["yttm:pk:", sk])
+//   - これにより caller_address() / ZswapCoinPublicKey の型名不確実性を回避する (#5, #10, #11)
+//
+// 未確認事項 (Step 1 で公式サンプル実行時に解消すること):
+//   ⚠️ #13  Map の insert() は副作用か戻り値か (insert() return value)
+//   ⚠️ #14  Bool 型名 (本ファイルでは未使用)
+//   ⚠️ #16  persistentHash<Vector<N, Bytes<M>>> の型パラメータ構文
+//   ⚠️ #18  pragma / import の正確なバージョン文字列
+// ══════════════════════════════════════════════════════════════════════════════
+
+
+// ── Witnesses ─────────────────────────────────────────────────────────────
+// witness はモジュールレベルで宣言する (circuit パラメータではない) (#15)
+//
+// minterSecretKey — Operator (デプロイヤー) の秘密鍵
+//   mintReward() の呼び出し権限チェックに使用。
+//   TypeScript DApp がこの witness を提供する。
+//   Lace Wallet の場合は Lace DApp Connector から取得する。
+witness minterSecretKey(): Bytes<32>;
+
+// holderSecretKey — トークン保有者 (ゲームプレイヤー) の秘密鍵
+//   balanceOf() と transfer() で呼び出し元を特定するために使用。
+//   秘密鍵そのものはチェーンに公開されず、derivePk() で公開鍵を導出する。
+witness holderSecretKey(): Bytes<32>;
+
+
+// ── Ledger (オンチェーン状態) ─────────────────────────────────────────────
+ledger {
+  // シールド残高マップ
+  //   key: derivePk(holderSecretKey) = Bytes<32> — 保有者の公開鍵ハッシュ
+  //   value: YTTM 残高 (micro-YTTM, 1 YTTM = 1_000_000 units)
+  //   ⚠️ Map<Bytes<32>, Uint64> の構文は公式サンプルで確認すること (#13)
+  balances: Map<Bytes<32>, Uint64>;
+
+  // 総発行量 (公開)
+  totalSupply: Uint64;
+
+  // 発行権限を持つ Operator の公開鍵ハッシュ
+  //   constructor に渡した minterPublicKey が格納される
+  //   mintReward() 呼び出し時に derivePk(minterSecretKey()) と比較する
+  authorizedMinterPk: Bytes<32>;
+}
+
+
+// ── 公開鍵導出ヘルパー ───────────────────────────────────────────────────
+// 秘密鍵 sk から "yttm:" プレフィックス付きの公開鍵ハッシュを生成する。
+// bboard サンプルの publicKey() circuit と同じパターン。
+// ⚠️ persistentHash<Vector<2, Bytes<32>>> の型パラメータ構文を確認すること (#16)
+// ⚠️ pad(32, "yttm:pk:") — pad の第1引数はバイト数 (32) であることを確認すること (#16)
+circuit derivePk(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "yttm:pk:"), sk]);
+}
+
+
+// ── Constructor ───────────────────────────────────────────────────────────
+// デプロイ時に1回だけ呼ばれる。
+// minterPublicKey = derivePk(operatorSecretKey) を TypeScript で事前計算して渡す。
+constructor(minterPublicKey: Bytes<32>): [] {
+  ledger.totalSupply = 0n;
+  ledger.authorizedMinterPk = minterPublicKey;
+}
+
+
+// ── mintReward ────────────────────────────────────────────────────────────
+// ゲーム勝者に YTTM を発行する。Operator のみ呼び出し可能。
+//
+// 引数:
+//   recipient — 受取人の公開鍵ハッシュ (derivePk(holderSecretKey))
+//               TypeScript 側で計算して渡す
+//   amount    — 発行量 (micro-YTTM)。通常 10_000_000n (= 10 YTTM)
+//
+// 呼び出しフロー (TypeScript DApp レイヤー):
+//   1. janken.claimReward(winnerAddress) — 勝者確認・GameStatus → Claimed
+//   2. yttm.mintReward(recipient, 10_000_000n) — 本 circuit
+//
+// ⚠️ insert() が副作用でなく新しい Map を返す場合は以下のように修正が必要:
+//   const updatedBalances = ledger.balances.insert(recipient, current + amount);
+//   ledger.balances = updatedBalances;  // ← 構文確認が必要 (#13)
+export circuit mintReward(recipient: Bytes<32>, amount: Uint64): [] {
+  const callerPk = derivePk(minterSecretKey());
+  assert callerPk == ledger.authorizedMinterPk,
+    "Only the authorized minter can call mintReward";
+
+  const current = ledger.balances.lookup(recipient).value_or(0n);
+  ledger.balances.insert(recipient, current + amount);
+  ledger.totalSupply = ledger.totalSupply + amount;
+}
+
+
+// ── balanceOf ─────────────────────────────────────────────────────────────
+// 呼び出し元 (holderSecretKey の保有者) の YTTM 残高を返す。
+// 秘密鍵なしでは残高を照会できないため Shielded として機能する。
+// 引数なし — 呼び出し元は holderSecretKey witness で特定する。
+export circuit balanceOf(): Uint64 {
+  const holderPk = derivePk(holderSecretKey());
+  return ledger.balances.lookup(holderPk).value_or(0n);
+}
+
+
+// ── transfer ──────────────────────────────────────────────────────────────
+// 呼び出し元から指定アドレスへ YTTM を送金する。
+// from 認証は holderSecretKey witness で行うため caller_address() は不要 (#11)。
+//
+// 引数:
+//   to     — 受取人の公開鍵ハッシュ (derivePk(recipientSecretKey))
+//   amount — 送金量 (micro-YTTM)
+export circuit transfer(to: Bytes<32>, amount: Uint64): [] {
+  const fromPk = derivePk(holderSecretKey());
+  const fromBalance = ledger.balances.lookup(fromPk).value_or(0n);
+  assert fromBalance >= amount, "Insufficient YTTM balance";
+
+  ledger.balances.insert(fromPk, fromBalance - amount);
+
+  const toBalance = ledger.balances.lookup(to).value_or(0n);
+  ledger.balances.insert(to, toBalance + amount);
+}
+
+
+// ── getTotalSupply ────────────────────────────────────────────────────────
+// 総発行量を返す (公開データ)。
+export circuit getTotalSupply(): Uint64 {
+  return ledger.totalSupply;
+}

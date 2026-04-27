@@ -1,0 +1,13 @@
+{
+  "name": "@zkp-demo1/contract",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:yttm": "compactc src/yttm.compact --output ../api/src/",
+    "build:janken": "compactc src/janken.compact --output ../api/src/",
+    "build": "npm run build:yttm && npm run build:janken"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/compact-compiler": "^0.30.0"
+  }
+}
