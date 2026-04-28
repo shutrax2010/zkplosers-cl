@@ -1,4 +1,4 @@
-pragma language_version >= 0.20;
+pragma language_version >= 0.22;
 
 import CompactStandardLibrary;
 
@@ -9,71 +9,71 @@ import CompactStandardLibrary;
 //   - ゲーム勝者への報酬トークン (10 YTTM) を発行する
 //   - 残高は Shielded（ZKP）— 保有者のみ閲覧可能、第三者に非公開
 //   - mintReward() は Operator (デプロイヤー) のみ呼び出し可能
-//   - TypeScript DApp レイヤーが janken.compact.claimReward() 後に続けて呼ぶ
+//   - TypeScript DApp が janken.compact.claimReward() 後に続けて呼ぶ
 //
 // ウォレットアドレスの扱い:
-//   - Compact の正式なウォレット型名 (ZswapCoinPublicKey 等) は Step 1 で確認予定
-//   - 本ファイルでは秘密鍵から derivePk() で導出した Bytes<32> をアドレスとして使用
-//   - derivePk(sk) = persistentHash(["yttm:pk:", sk])
-//   - これにより caller_address() / ZswapCoinPublicKey の型名不確実性を回避する (#5, #10, #11)
 //
-// 未確認事項 (Step 1 で公式サンプル実行時に解消すること):
-//   ⚠️ #13  Map の insert() は副作用か戻り値か (insert() return value)
-//   ⚠️ #14  Bool 型名 (本ファイルでは未使用)
-//   ⚠️ #16  persistentHash<Vector<N, Bytes<M>>> の型パラメータ構文
-//   ⚠️ #18  pragma / import の正確なバージョン文字列
+//   ① Operator (発行者) 認証
+//      authorizedMinter: ZswapCoinPublicKey — ownPublicKey() でデプロイヤーを記録
+//      mintReward() 時に ownPublicKey() と比較することで「Operator だけが発行できる」を保証
+//      election contract の organizer 認証パターンと同じ
+//
+//   ② 残高マップのキー (受取人・保有者アドレス)
+//      balances: Map<Bytes<32>, Uint64>
+//      キー = persistentHash(["yttm:pk:", holderSecretKey])
+//             holderPublicKey() circuit で導出 (election の getDappPublicKey と同パターン)
+//      秘密鍵なしではキーを計算できないため残高照会が Shielded として機能する
+//
+// 構文根拠 (公式サンプル):
+//   - bboard.compact   : ledger 宣言・witness・persistentHash・disclose・assert
+//   - election.compact : ownPublicKey・ZswapCoinPublicKey・sealed ledger・Map 操作
+//
+// 残存未確認事項 (compact compile で判明する):
+//   ⚠️ totalSupply へのパラメータ加算に disclose() が必要かどうか
+//   ⚠️ Map.insert の value 引数に disclose() が必要かどうか
+//   ⚠️ コンストラクタの引数なし形式で TypeScript から引数を渡す場合の別途設計が必要か
 // ══════════════════════════════════════════════════════════════════════════════
 
 
 // ── Witnesses ─────────────────────────────────────────────────────────────
-// witness はモジュールレベルで宣言する (circuit パラメータではない) (#15)
-//
-// minterSecretKey — Operator (デプロイヤー) の秘密鍵
-//   mintReward() の呼び出し権限チェックに使用。
-//   TypeScript DApp がこの witness を提供する。
-//   Lace Wallet の場合は Lace DApp Connector から取得する。
-witness minterSecretKey(): Bytes<32>;
+// モジュールレベルで宣言 (bboard 確認済み)
 
-// holderSecretKey — トークン保有者 (ゲームプレイヤー) の秘密鍵
-//   balanceOf() と transfer() で呼び出し元を特定するために使用。
-//   秘密鍵そのものはチェーンに公開されず、derivePk() で公開鍵を導出する。
+// トークン保有者の秘密鍵。balanceOf() と transfer() で呼び出し元を特定するために使用。
+// TypeScript DApp が WalletProvider 経由でこの witness を提供する。
 witness holderSecretKey(): Bytes<32>;
 
 
-// ── Ledger (オンチェーン状態) ─────────────────────────────────────────────
-ledger {
-  // シールド残高マップ
-  //   key: derivePk(holderSecretKey) = Bytes<32> — 保有者の公開鍵ハッシュ
-  //   value: YTTM 残高 (micro-YTTM, 1 YTTM = 1_000_000 units)
-  //   ⚠️ Map<Bytes<32>, Uint64> の構文は公式サンプルで確認すること (#13)
-  balances: Map<Bytes<32>, Uint64>;
+// ── Ledger ────────────────────────────────────────────────────────────────
+// 個別 export ledger 宣言 (bboard 確認済み)
 
-  // 総発行量 (公開)
-  totalSupply: Uint64;
+// 発行権限を持つ Operator の公開鍵 (sealed = コンストラクタ後に変更不可)
+// election contract の organizer フィールドと同じパターン
+export sealed ledger authorizedMinter: ZswapCoinPublicKey;
 
-  // 発行権限を持つ Operator の公開鍵ハッシュ
-  //   constructor に渡した minterPublicKey が格納される
-  //   mintReward() 呼び出し時に derivePk(minterSecretKey()) と比較する
-  authorizedMinterPk: Bytes<32>;
-}
+// シールド残高マップ
+//   key:   holderPublicKey() の返り値 (Bytes<32>)
+//   value: YTTM 残高 (micro-YTTM 単位。1 YTTM = 1_000_000)
+export ledger balances: Map<Bytes<32>, Uint64>;
 
-
-// ── 公開鍵導出ヘルパー ───────────────────────────────────────────────────
-// 秘密鍵 sk から "yttm:" プレフィックス付きの公開鍵ハッシュを生成する。
-// bboard サンプルの publicKey() circuit と同じパターン。
-// ⚠️ persistentHash<Vector<2, Bytes<32>>> の型パラメータ構文を確認すること (#16)
-// ⚠️ pad(32, "yttm:pk:") — pad の第1引数はバイト数 (32) であることを確認すること (#16)
-circuit derivePk(sk: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "yttm:pk:"), sk]);
-}
+// 総発行量 (公開)
+export ledger totalSupply: Uint64;
 
 
 // ── Constructor ───────────────────────────────────────────────────────────
-// デプロイ時に1回だけ呼ばれる。
-// minterPublicKey = derivePk(operatorSecretKey) を TypeScript で事前計算して渡す。
-constructor(minterPublicKey: Bytes<32>): [] {
-  ledger.totalSupply = 0n;
-  ledger.authorizedMinterPk = minterPublicKey;
+// ownPublicKey() = デプロイヤーのウォレット公開鍵 (election 確認済み)
+// 引数なし構文 (bboard 確認済み)
+constructor() {
+  authorizedMinter = ownPublicKey();
+  totalSupply = 0n;
+}
+
+
+// ── holderPublicKey ────────────────────────────────────────────────────────
+// 保有者の秘密鍵から公開鍵ハッシュを導出する。
+// election の getDappPublicKey() と同じパターン。
+// export circuit なので TypeScript DApp が mintReward の recipient 計算にも使える。
+export circuit holderPublicKey(): Bytes<32> {
+  return disclose(persistentHash<Vector<2, Bytes<32>>>([pad(32, "yttm:pk:"), holderSecretKey()]));
 }
 
 
@@ -81,59 +81,51 @@ constructor(minterPublicKey: Bytes<32>): [] {
 // ゲーム勝者に YTTM を発行する。Operator のみ呼び出し可能。
 //
 // 引数:
-//   recipient — 受取人の公開鍵ハッシュ (derivePk(holderSecretKey))
-//               TypeScript 側で計算して渡す
+//   recipient — 受取人の公開鍵ハッシュ (holderPublicKey() で導出した Bytes<32>)
 //   amount    — 発行量 (micro-YTTM)。通常 10_000_000n (= 10 YTTM)
 //
-// 呼び出しフロー (TypeScript DApp レイヤー):
-//   1. janken.claimReward(winnerAddress) — 勝者確認・GameStatus → Claimed
-//   2. yttm.mintReward(recipient, 10_000_000n) — 本 circuit
+// 呼び出しフロー (TypeScript DApp):
+//   1. janken.claimReward(winnerAddress)
+//   2. yttm.mintReward(winnerHolderPublicKey, 10_000_000n)
 //
-// ⚠️ insert() が副作用でなく新しい Map を返す場合は以下のように修正が必要:
-//   const updatedBalances = ledger.balances.insert(recipient, current + amount);
-//   ledger.balances = updatedBalances;  // ← 構文確認が必要 (#13)
+// ⚠️ totalSupply = totalSupply + amount の書き込みで
+//    disclose() が必要かどうかは compact compile で確認すること
 export circuit mintReward(recipient: Bytes<32>, amount: Uint64): [] {
-  const callerPk = derivePk(minterSecretKey());
-  assert callerPk == ledger.authorizedMinterPk,
-    "Only the authorized minter can call mintReward";
+  assert(authorizedMinter == ownPublicKey(), "Only the authorized minter can call mintReward");
 
-  const current = ledger.balances.lookup(recipient).value_or(0n);
-  ledger.balances.insert(recipient, current + amount);
-  ledger.totalSupply = ledger.totalSupply + amount;
+  const current = balances.lookup(recipient);
+  balances.insert(recipient, current + amount);
+  totalSupply = disclose(totalSupply + amount);
 }
 
 
 // ── balanceOf ─────────────────────────────────────────────────────────────
-// 呼び出し元 (holderSecretKey の保有者) の YTTM 残高を返す。
-// 秘密鍵なしでは残高を照会できないため Shielded として機能する。
-// 引数なし — 呼び出し元は holderSecretKey witness で特定する。
+// 呼び出し元の YTTM 残高を返す。holderSecretKey を知る者のみ正しい残高を取得できる。
 export circuit balanceOf(): Uint64 {
-  const holderPk = derivePk(holderSecretKey());
-  return ledger.balances.lookup(holderPk).value_or(0n);
+  return balances.lookup(holderPublicKey());
 }
 
 
 // ── transfer ──────────────────────────────────────────────────────────────
 // 呼び出し元から指定アドレスへ YTTM を送金する。
-// from 認証は holderSecretKey witness で行うため caller_address() は不要 (#11)。
 //
 // 引数:
-//   to     — 受取人の公開鍵ハッシュ (derivePk(recipientSecretKey))
+//   to     — 受取人の公開鍵ハッシュ (holderPublicKey() で導出した Bytes<32>)
 //   amount — 送金量 (micro-YTTM)
 export circuit transfer(to: Bytes<32>, amount: Uint64): [] {
-  const fromPk = derivePk(holderSecretKey());
-  const fromBalance = ledger.balances.lookup(fromPk).value_or(0n);
-  assert fromBalance >= amount, "Insufficient YTTM balance";
+  const from = holderPublicKey();
+  const fromBalance = balances.lookup(from);
+  assert(fromBalance >= amount, "Insufficient YTTM balance");
 
-  ledger.balances.insert(fromPk, fromBalance - amount);
+  balances.insert(from, fromBalance - amount);
 
-  const toBalance = ledger.balances.lookup(to).value_or(0n);
-  ledger.balances.insert(to, toBalance + amount);
+  const toBalance = balances.lookup(to);
+  balances.insert(to, toBalance + amount);
 }
 
 
 // ── getTotalSupply ────────────────────────────────────────────────────────
 // 総発行量を返す (公開データ)。
 export circuit getTotalSupply(): Uint64 {
-  return ledger.totalSupply;
+  return totalSupply;
 }
